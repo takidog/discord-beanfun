@@ -1,0 +1,6 @@
+# Guild: Server id.
+LIMIT_GUILD = ['1123']
+
+BOT_TOKEN = 'MTEyNzrxLGI0'
+
+LOGIN_TIME_OUT = 180
