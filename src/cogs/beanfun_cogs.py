@@ -167,7 +167,7 @@ class BeanfunCog(commands.Cog):
             await interaction.response.send_message('! 沒找到這個帳號')
             return
 
-        await interaction.response.send_message(f'於20s後刪除\n帳號: {account_model.account}\n密碼: {await login.get_account_otp(account=account_model)}')  # noqa: E501
+        await interaction.response.send_message(f'於20s後刪除\n帳號: {account_model.account}\n密碼: {await login.get_account_otp(account=account_model)}', delete_after=20)  # noqa: E501
 
 
 async def setup(bot: commands.Bot) -> None:
