@@ -135,7 +135,7 @@ class BeanfunLogin:
     async def get_heartbeat(self) -> HeartBeatResponse:
         if self.auto_logout_sec > 0 and time.time() - self.login_at > self.auto_logout_sec:
             await self.logout()
-            return HeartBeatResponse(ResultData=None, Result=-1, ResultMessage="")
+            return HeartBeatResponse(ResultData=None, Result=0, ResultMessage="")
 
         res = await self.session.post(
             "https://tw.newlogin.beanfun.com/generic_handlers/CheckLoginStatus.ashx",

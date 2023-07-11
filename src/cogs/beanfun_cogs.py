@@ -95,7 +95,7 @@ class BeanfunCog(commands.Cog):
         m2 = await interaction.channel.send(file=discord.File(fp=file, filename='image.png'), delete_after=130)
         delete_message_list.append(m2)
 
-        m3 = await interaction.channel.send(f"https://beanfunstor.blob.core.windows.net/redirect/appCheck.html?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}", delete_after=130)  # noqa: E501
+        m3 = await interaction.channel.send(f"https://beanfunstor.blob.core.windows.net/redirect/appCheck.html?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}", delete_after=130, suppress_embeds=True)  # noqa: E501
         delete_message_list.append(m3)
 
         loop = asyncio.get_event_loop()
