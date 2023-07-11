@@ -10,10 +10,12 @@
 
 然後，你可以使用以下的命令來建立並運行Docker映像：
 
-\```bash
+```bash
+
 docker build -t beanfun-bot .
 docker run -d -e BOT_TOKEN=<你的Discord bot token> -e LIMIT_GUILD=<你的Discord server id> beanfun-bot
-\```
+
+```
 
 ## 環境變數
 
