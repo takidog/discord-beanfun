@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import time
 from typing import Any, Coroutine, Dict, List
 import discord
 from discord import app_commands
@@ -60,7 +61,7 @@ class BeanfunCog(commands.Cog):
 
         # Check the heartbeat of the login
         heartbeat = await login.get_heartbeat()
-        if heartbeat.Result == 0:
+        if heartbeat.ResultCode == 0:
             await interaction.response.send_message("帳號沒有靈壓了，需要重新登入")
             return
 
@@ -118,12 +119,16 @@ class BeanfunCog(commands.Cog):
 
         m3 = await interaction.channel.send(
             f"https://beanfunstor.blob.core.windows.net/redirect/appCheck.html?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}",  # noqa: E501
-            delete_after=130,
+            delete_after=LOGIN_TIME_OUT,
             suppress_embeds=True,
         )
         delete_message_list.append(m3)
 
         loop = asyncio.get_event_loop()
+
+        async def heartbeat_callback(status):
+            if status == -1:
+                await interaction.channel.send("被登出了:(")
 
         async def login_callback(status):
             if status == 1:
@@ -131,7 +136,11 @@ class BeanfunCog(commands.Cog):
                 await asyncio.gather(*[i.delete() for i in delete_message_list])
 
                 login = self.login_dict[interaction.channel_id]
+
+                await login.heartbeat_loop(heartbeat_callback)
+
                 point = await login.get_game_point()
+
                 account_list_str = ""
                 for i in await login.get_maplestory_account_list():
                     account_list_str += f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
@@ -189,7 +198,7 @@ class BeanfunCog(commands.Cog):
             return
 
         heartbeat = await login.get_heartbeat()
-        if heartbeat.Result == 0:
+        if heartbeat.ResultCode == 0:
             await interaction.response.send_message("帳號沒有靈壓了，需要重新登入")
             return
 
@@ -218,11 +227,11 @@ class BeanfunCog(commands.Cog):
             return
 
         login = self.login_dict[interaction.channel_id]
-        if not login.is_login:
-            await interaction.response.send_message("目前該頻道尚未登入BF")
-            return
 
         login.auto_logout_sec = ttl
+
+        if login.is_login:
+            self.login_at = time.time()
 
         await interaction.response.send_message(f"已設定為 {login.auto_logout_sec}s後登出")
 

@@ -32,6 +32,7 @@ class BeanfunLogin:
         self.game_account_list = None
         self.login_at = 0
         self.auto_logout_sec = auto_logout_sec
+        self.heartbeat_worker = None
 
         # Setting up the TCP connection for the session.
         self._conn = aiohttp.TCPConnector(ssl=SSL_CTX)
@@ -44,28 +45,21 @@ class BeanfunLogin:
         Returns:
             LoginQRInfo: Contains encrypted QR data.
         """
-        # Logging out of the session and creating a new connection if already logged in
-        if self.is_login:
-            await self.logout()
-            await self.close_connection()
-            self.session = aiohttp.ClientSession(connector=self._conn)
 
         # Resetting the login-related variables
-        self.is_login = False
-        self.login_qr_data = None
-        self.web_token = None
-        self.skey = None
-        self._create_login_time = time.time()
+        await self.logout()
 
+        self._create_login_time = time.time()
         # Sending GET request to the login URL
         res = await self.session.get(
-            "https://tw.beanfun.com/beanfun_block/bflogin/default.aspx?service_code=999999&service_region=T0"
+            "https://tw.beanfun.com/beanfun_block/bflogin/default.aspx?service_code=999999&service_region=T0",
         )
+
         self.skey = res.request_info.url.query.get("skey")  # Extracting security key from the URL
         # Fetching QR data using the security key
         res = await self.session.get(
-            f"https://tw.newlogin.beanfun.com/generic_handlers/get_qrcodeData.ashx?skey={self.skey}&startGame=&clientID="  # noqa: E501
-        )  # noqa: E501
+            f"https://tw.newlogin.beanfun.com/generic_handlers/get_qrcodeData.ashx?skey={self.skey}&startGame=&clientID=",  # noqa: E501,
+        )
 
         result = await res.json()
 
@@ -155,11 +149,6 @@ class BeanfunLogin:
             "https://tw.newlogin.beanfun.com/generic_handlers/erase_token.ashx", data={"web_token": "1"}
         )  # noqa: E501
 
-        # If logged in, close current connection and open a new one
-        if self.is_login:
-            await self.close_connection()
-            self.session = aiohttp.ClientSession(connector=self._conn)
-
         # Resetting the session variables
         self.is_login = False
         self.login_qr_data = None
@@ -167,6 +156,11 @@ class BeanfunLogin:
         self.game_account_list = None
         self.auto_logout_sec = -1
         self.skey = None
+        if self.heartbeat_worker is not None:
+            self.heartbeat_worker.cancel()
+            self.heartbeat_worker = None
+
+        self.session.cookie_jar.clear()
 
     async def get_heartbeat(self) -> HeartBeatResponse:
         """
@@ -180,18 +174,19 @@ class BeanfunLogin:
         if self.auto_logout_sec > 0 and time.time() - self.login_at > self.auto_logout_sec:
             await self.logout()
             # Return a default heartbeat response when a logout occurs.
-            return HeartBeatResponse(ResultData=None, Result=0, ResultMessage="")
+            return HeartBeatResponse(ResultCode=0, ResultDesc="", MainAccountID="")
 
         # Send a POST request to check login status
-        res = await self.session.post(
-            "https://tw.newlogin.beanfun.com/generic_handlers/CheckLoginStatus.ashx",
-            data={
-                "status": self.login_qr_data.strEncryptData,
-            },
-        )
+        res = await self.session.get("https://tw.beanfun.com/beanfun_block/generic_handlers/echo_token.ashx?webtoken=1")
         # Parse the response text and return a HeartBeatResponse object.
         result = await res.text()
-        return HeartBeatResponse(**extract_json(result))
+
+        model = HeartBeatResponse(**extract_json(result, double_quotes=True))
+
+        if model.ResultCode == 0:
+            await self.logout()
+
+        return model
 
     async def get_game_point(self) -> GamePointResponse:
         """
@@ -216,6 +211,24 @@ class BeanfunLogin:
         """
         await self.session.close()
 
+    async def heartbeat_loop(self, status_change_callback):
+        if self.heartbeat_worker is not None:
+            self.heartbeat_worker.cancel()
+        if not self.is_login:
+            return
+
+        async def _worker(status_change_callback):
+            while True:
+                res = await self.get_heartbeat()
+                if res.ResultCode == 0:
+                    await status_change_callback(-1)
+                    break
+
+                await asyncio.sleep(60)
+
+        loop = asyncio.get_event_loop()
+        self.heartbeat_worker = loop.create_task(_worker(status_change_callback))
+
     async def waiting_login_loop(self, callback_func):
         """
         This function waits for the login to complete or for a timeout.
@@ -231,17 +244,15 @@ class BeanfunLogin:
             await callback_func(1)
             return
         for _ in range(120):
+            login_status = await self.get_login_status()
             try:
-                login_status = await self.get_login_status()
-
                 if login_status.Result == 1:
                     self.is_login = True
                     self.login_at = time.time()
                     await callback_func(1)
                     return
                 await asyncio.sleep(1)
-            except Exception as e:
-                print(e)
+            except Exception:
                 await callback_func(-1)
                 return
 

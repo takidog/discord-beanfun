@@ -16,8 +16,9 @@ class BeanfunAccountInfo(BaseModel):
 
 
 class HeartBeatResponse(BaseModel):
-    Result: int
-    ResultMessage: str
+    ResultCode: int
+    ResultDesc: str
+    MainAccountID: str
 
 
 class GamePointResponse(BaseModel):
