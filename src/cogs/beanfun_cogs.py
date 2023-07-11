@@ -85,6 +85,7 @@ class BeanfunCog(commands.Cog):
 
     @app_commands.command(name="login", description="登入")
     async def login(self, interaction: discord.Interaction):
+        await interaction.response.send_message("ok")
         # Check if there is a login for the channel the command was called from
         # If not, create a new one
         if interaction.channel_id not in self.login_dict:
