@@ -69,7 +69,7 @@ class BeanfunCog(commands.Cog):
         # Get a list of all the accounts of the login
         account_list_str = ""
         for i in await login.get_maplestory_account_list():
-            account_list_str += f"帳號名稱: {i.account_name} 帳號: {i.account}\n"
+            account_list_str += f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
         # Send the login information to the channel the command was called from
         await interaction.response.send_message(f"目前登入中，點數剩餘：{point.RemainPoint}\n{account_list_str}")
         await interaction.channel.send("----")  # noqa: E501
