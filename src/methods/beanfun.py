@@ -157,7 +157,7 @@ class BeanfunLogin:
 
         # If logged in, close current connection and open a new one
         if self.is_login:
-            self.close_connection()
+            await self.close_connection()
             self.session = aiohttp.ClientSession(connector=self._conn)
 
         # Resetting the session variables

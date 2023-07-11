@@ -12,6 +12,8 @@ import qrcode
 
 import io
 
+from utils.util import hidden_message
+
 
 class BeanfunCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -131,7 +133,7 @@ class BeanfunCog(commands.Cog):
                 point = await login.get_game_point()
                 account_list_str = ""
                 for i in await login.get_maplestory_account_list():
-                    account_list_str += f"帳號名稱: {i.account_name} 帳號: ||{i.account}||\n"
+                    account_list_str += f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
                 await interaction.channel.send(f"目前登入中，點數剩餘：{point.RemainPoint}\n{account_list_str}")
                 # login success
                 pass
@@ -199,7 +201,7 @@ class BeanfunCog(commands.Cog):
             return
 
         await interaction.response.send_message(
-            f"於{OTP_DISPLAY_TIME}s後刪除\n帳號名稱: {account_model.account_name}\n帳號: ||{account_model.account}||\n密碼: ||{await login.get_account_otp(account=account_model)}||",  # noqa: E501
+            f"於{OTP_DISPLAY_TIME}s後刪除\n帳號名稱: {account_model.account_name}\n帳號: {hidden_message(account_model.account)}\n密碼: {hidden_message(await login.get_account_otp(account=account_model))}",  # noqa: E501
             delete_after=OTP_DISPLAY_TIME,
         )
 
