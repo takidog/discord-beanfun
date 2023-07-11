@@ -13,10 +13,12 @@ SSL_CTX.set_ciphers(
 )
 
 
-def extract_json(s):
+def extract_json(s, double_quotes: bool = False):
     match = re.search(r"\{.*\}", s)
     if match:
         json_str = match.group(0)
+        if double_quotes:
+            json_str = re.sub(r"(\w+)\s*:", r'"\1":', json_str)
         return json.loads(json_str)
     return {}
 
