@@ -6,7 +6,6 @@ class LoginQRInfo(BaseModel):
 
 
 class CheckLoginStatus(BaseModel):
-    ResultData: None | dict
     Result: int
     ResultMessage: str
 
@@ -17,7 +16,6 @@ class BeanfunAccountInfo(BaseModel):
 
 
 class HeartBeatResponse(BaseModel):
-    ResultData: None | dict
     Result: int
     ResultMessage: str
 
