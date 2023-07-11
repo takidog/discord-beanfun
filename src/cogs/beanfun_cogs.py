@@ -103,7 +103,9 @@ class BeanfunCog(commands.Cog):
         # login status changes
         delete_message_list = []
 
-        m1 = await interaction.channel.send(f"請於{LOGIN_TIME_OUT}s內完成登入", delete_after=LOGIN_TIME_OUT)
+        m1 = await interaction.channel.send(
+            f"**注意！ 請使用信任的機器人，或由自己架設的機器人，避免安全風險**\n請於{LOGIN_TIME_OUT}s內完成登入", delete_after=LOGIN_TIME_OUT
+        )
         delete_message_list.append(m1)
         qr = qrcode.make(
             data=f"https://beanfunstor.blob.core.windows.net/redirect/appCheck.html?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}"  # noqa: E501
