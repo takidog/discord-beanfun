@@ -12,6 +12,7 @@ bot = commands.Bot(command_prefix=".", intents=intents)
 async def on_ready():
     print(f"Login: {bot.user} Success.")
 
+
 # load cog file
 
 
@@ -20,6 +21,7 @@ async def load(ctx, extension):
     await bot.load_extension(f"cogs.{extension}")
     await ctx.send(f"Loaded {extension} done.")
 
+
 # unload cog
 
 
@@ -27,6 +29,7 @@ async def load(ctx, extension):
 async def unload(ctx, extension):
     await bot.unload_extension(f"cogs.{extension}")
     await ctx.send(f"UnLoaded {extension} done.")
+
 
 # reload cog file.
 
@@ -44,9 +47,12 @@ async def load_extensions():
 
 
 async def main():
+    if BOT_TOKEN is None:
+        raise ValueError("Not found BOT_TOKEN")
     async with bot:
         await load_extensions()
         await bot.start(BOT_TOKEN)
+
 
 # 確定執行此py檔才會執行
 if __name__ == "__main__":
