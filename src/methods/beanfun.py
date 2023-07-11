@@ -18,7 +18,7 @@ from lxml import etree
 
 class BeanfunLogin:
 
-    def __init__(self, channel_id) -> None:
+    def __init__(self, channel_id, auto_logout_sec: int = -1) -> None:
         self.channel_id = channel_id
         self.is_login = False
         self.login_qr_data = None
@@ -27,10 +27,17 @@ class BeanfunLogin:
         self.skey = None
         self._conn = aiohttp.TCPConnector(ssl=SSL_CTX)
         self.game_account_list = None
+        self.login_at = 0
+        self.auto_logout_sec = auto_logout_sec
 
         self.session = aiohttp.ClientSession(connector=self._conn)
 
     async def get_login_info(self) -> LoginQRInfo:
+        if self.is_login:
+
+            self.close_connection()
+            self.session = aiohttp.ClientSession(connector=self._conn)
+
         self.is_login = False
         self.login_qr_data = None
         self.web_token = None
@@ -107,7 +114,29 @@ class BeanfunLogin:
 
         return response
 
+    async def logout(self):
+
+        await self.session.get('https://tw.newlogin.beanfun.com/generic_handlers/remove_bflogin_session.ashx')
+        await self.session.get('https://tw.beanfun.com/logout.aspx?service=999999_T0')
+
+        await self.session.post('https://tw.newlogin.beanfun.com/generic_handlers/erase_token.ashx', data={'web_token': '1'})  # noqa: E501
+
+        if self.is_login:
+
+            self.close_connection()
+            self.session = aiohttp.ClientSession(connector=self._conn)
+
+        self.is_login = False
+        self.login_qr_data = None
+        self.web_token = None
+        self.auto_logout_sec = -1
+        self.skey = None
+
     async def get_heartbeat(self) -> HeartBeatResponse:
+        if self.auto_logout_sec > 0 and time.time() - self.login_at > self.auto_logout_sec:
+            await self.logout()
+            return HeartBeatResponse(ResultData=None, Result=-1, ResultMessage="")
+
         res = await self.session.post(
             "https://tw.newlogin.beanfun.com/generic_handlers/CheckLoginStatus.ashx",
             data={
@@ -136,6 +165,7 @@ class BeanfunLogin:
 
                 if login_status.Result == 1:
                     self.is_login = True
+                    self.login_at = time.time()
                     await callback_func(1)
                     return
                 await asyncio.sleep(1)

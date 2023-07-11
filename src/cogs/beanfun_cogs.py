@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from typing import Any, Coroutine, Dict, List
 import discord
 from discord import app_commands
@@ -10,16 +11,6 @@ import qrcode
 
 
 import io
-
-
-async def test():
-    try:
-        while True:
-            print("Running...")
-            await asyncio.sleep(1)  # 假設這是一個會一直執行的任務
-    except asyncio.CancelledError:
-        print("Task was cancelled")
-        raise
 
 
 class BeanfunCog(commands.Cog):
@@ -71,6 +62,11 @@ class BeanfunCog(commands.Cog):
         for i in await login.get_maplestory_account_list():
             account_list_str += f"帳號名稱: {i.account_name} 帳號: {i.account}\n"
         await interaction.response.send_message(f'目前登入中，點數剩餘：{point.RemainPoint}\n{account_list_str}')
+        await interaction.channel.send('----')  # noqa: E501
+        if login.auto_logout_sec > 0:
+            await interaction.channel.send(f'設有自動登出({login.auto_logout_sec}s)，將於`{datetime.datetime.fromtimestamp(login.login_at + login.auto_logout_sec).strftime("%Y-%m-%d %H:%M:%S")}` 登出')  # noqa: E501
+        else:
+            await interaction.channel.send('目前沒有設定自動登出')  # noqa: E501
 
     @app_commands.command(name="login", description="登入")
     async def login(self, interaction: discord.Interaction):
@@ -118,11 +114,11 @@ class BeanfunCog(commands.Cog):
                 # login success
                 pass
             elif status == -1:
-                # error
-                pass
+                await interaction.channel.send("登入器錯誤:(")
+                await asyncio.gather(*[i.delete() for i in delete_message_list])
             elif status == -2:
-                # timeout
-                pass
+                await interaction.channel.send("晚了就不要了:(")
+                await asyncio.gather(*[i.delete() for i in delete_message_list])
 
         self.loop_list.append(
             loop.create_task(login.waiting_login_loop(login_callback))
@@ -159,6 +155,12 @@ class BeanfunCog(commands.Cog):
         if not login.is_login:
             await interaction.response.send_message('目前該頻道尚未登入BF')
             return
+
+        heartbeat = await login.get_heartbeat()
+        if heartbeat.Result == 0:
+            await interaction.response.send_message('帳號沒有靈壓了，需要重新登入')
+            return
+
         account_model = None
         for i in (await login.get_maplestory_account_list()):
             if i.account == game_account:
@@ -168,6 +170,35 @@ class BeanfunCog(commands.Cog):
             return
 
         await interaction.response.send_message(f'於20s後刪除\n帳號: {account_model.account}\n密碼: {await login.get_account_otp(account=account_model)}', delete_after=20)  # noqa: E501
+
+    @app_commands.command(name="set_logout_ttl", description="設定自動登出時長")
+    async def set_ttl(self, interaction: discord.Interaction, ttl: int):
+        if interaction.channel_id not in self.login_dict:
+            await interaction.response.send_message('目前該頻道沒有登入器')
+            return
+
+        login = self.login_dict[interaction.channel_id]
+        if not login.is_login:
+            await interaction.response.send_message('目前該頻道尚未登入BF')
+            return
+
+        login.auto_logout_sec = ttl
+
+        await interaction.response.send_message(f'已設定為 {login.auto_logout_sec}s後登出')
+
+    @app_commands.command(name="logout", description="登出Beanfun")
+    async def logout(self, interaction: discord.Interaction):
+        if interaction.channel_id not in self.login_dict:
+            await interaction.response.send_message('目前該頻道沒有登入器')
+            return
+
+        login = self.login_dict[interaction.channel_id]
+        if not login.is_login:
+            await interaction.response.send_message('目前該頻道尚未登入BF')
+            return
+
+        await login.logout()
+        await interaction.response.send_message('ok')
 
 
 async def setup(bot: commands.Bot) -> None:
