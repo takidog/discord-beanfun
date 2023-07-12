@@ -255,6 +255,12 @@ class BeanfunCog(commands.Cog):
         await login.logout()
         await interaction.response.send_message("ok")
 
+    @app_commands.command(name="about", description="關於")
+    async def about(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            "**注意！ 請使用信任的機器人，或由自己架設的機器人，避免安全風險**\n此專案網址:https://github.com/takidog/discord-beanfun#beanfun-discord-bot\n免責聲明: 本程式不是遊戲橘子開發的官方程式\nbot使用流程會經過第三方伺服器(Discord)\n請自行頻估安全風險後再使用"  # noqa: E501
+        )
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(BeanfunCog(bot), guilds=[discord.Object(id=i) for i in LIMIT_GUILD])
