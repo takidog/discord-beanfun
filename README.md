@@ -12,14 +12,13 @@
    * [安裝](#安裝)
       * [取得Discord伺服器id (guild id)](#取得discord伺服器id-guild-id)
       * [安裝@Linux/MacOS/WSL](#安裝linuxmacoswsl)
-      * [安裝@Windows Docker Desktop](#安裝windows-docker-desktop)
+      * [安裝@Windows](#安裝windows)
       * [環境變數](#環境變數)
       * [Discord Bot註冊](#discord-bot註冊)
    * [使用指令](#使用指令)
-   * [可能的QA](#可能的qa)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: takidog, at: Wed Jul 12 17:18:01 CST 2023 -->
+<!-- Added by: takidog, at: Wed Jul 12 18:17:40 CST 2023 -->
 
 <!--te-->
 
@@ -97,6 +96,8 @@
 
 其中的 `8OOOOOOOOOOOO7` 就是你的伺服器id了!
 
+---
+
 ### 安裝@Linux/MacOS/WSL
 
 首先，請確保你已經安裝了Docker。如果你還沒有安裝，請訪問[Docker](https://www.docker.com/)並按照指南進行安裝。
@@ -110,6 +111,7 @@ docker pull takidog/discord_beanfun:latest
 docker run -d \
     -e BOT_TOKEN=<你的Discord bot token> \
     -e LIMIT_GUILD=<你的Discord server id> \
+    --name beanfun-bot \
     takidog/discord_beanfun:latest
 
 ```
@@ -118,7 +120,45 @@ docker run -d \
 
 相信會使用Unix的你，不需要教您填入環境變數了🐙
 
-### 安裝@Windows Docker Desktop
+---
+
+### 安裝@Windows
+
+
+首先，請確保你已經安裝了Docker。如果你還沒有安裝，請訪問[Docker](https://www.docker.com/)並按照指南進行安裝。
+
+並且確認Docker Desktop 可以正常啟動
+
+這時開啟PowerShell 將指令輸入 **請將該填入的填入**
+
+```bash
+
+docker run -d -e BOT_TOKEN=<你的Discord bot token> -e LIMIT_GUILD=<你的Discord server id> --name beanfun-bot takidog/discord_beanfun:latest
+```
+
+輸入**範例**
+```bash
+
+docker run -d -e BOT_TOKEN=1234454566787 -e LIMIT_GUILD=8OOOOOOOOOOOO7 --name beanfun-bot takidog/discord_beanfun:latest
+
+```
+
+關閉機器人
+```bash
+docker stop beanfun-bot
+```
+
+
+```bash
+在Windows開機就啟動機器人
+可以在Docker Desktop -> Setting -> General 勾選 "Start Docker Desktop when you log in"
+並且在啟動指令加上 --restart unless-stopped
+
+docker run -d -e BOT_TOKEN=1234454566787 -e LIMIT_GUILD=8OOOOOOOOOOOO7 --name beanfun-bot --restart unless-stopped takidog/discord_beanfun:latest
+
+```
+
+---
 
 ### 環境變數
 
@@ -148,9 +188,13 @@ docker run -d \
 請注意，你應該要保護好你的token，不要讓它公開或分享給他人，因為有了token，任何人都可以使用你的機器人。
 
 可以到OAuth2 -> URL Generateor
+
 SCOPES勾選 `bot`
+
 BOT PERMISSIONS 勾選 `Send Messages` `Attach Files`
+
 複製連結，就可以將bot邀請到您的伺服器了!
+
 
 ## 使用指令
 
@@ -166,4 +210,3 @@ BOT PERMISSIONS 勾選 `Send Messages` `Attach Files`
 詳細的命令用法請參考源代碼。
 
 
-## 可能的QA
