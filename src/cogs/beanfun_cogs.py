@@ -212,6 +212,8 @@ class BeanfunCog(commands.Cog):
             await interaction.response.send_message("! 沒找到這個帳號")
             return
 
+        await interaction.channel.send(f"<@{interaction.user.id}>\n{interaction.user.name}:{interaction.user.nick} 現在領取了帳號: {account_model.account_name}")
+
         await interaction.response.send_message(
             f"於{OTP_DISPLAY_TIME}s後刪除\n帳號名稱: {account_model.account_name}\n帳號: {hidden_message(account_model.account)}\n密碼: {hidden_message(await login.get_account_otp(account=account_model))}",  # noqa: E501
             delete_after=OTP_DISPLAY_TIME,
