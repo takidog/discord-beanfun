@@ -20,7 +20,9 @@ class BeanfunCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.loop_list = []  # A list to keep track of all loops
-        self.login_dict: Dict[str, BeanfunLogin] = {}  # A dictionary to keep track of all logins
+        self.login_dict: Dict[
+            str, BeanfunLogin
+        ] = {}  # A dictionary to keep track of all logins
 
     # This method is called when the cog is loaded
     async def cog_load(self) -> Coroutine[Any, Any, None]:
@@ -70,9 +72,13 @@ class BeanfunCog(commands.Cog):
         # Get a list of all the accounts of the login
         account_list_str = ""
         for i in await login.get_maplestory_account_list():
-            account_list_str += f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
+            account_list_str += (
+                f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
+            )
         # Send the login information to the channel the command was called from
-        await interaction.response.send_message(f"目前登入中，點數剩餘：{point.RemainPoint}\n{account_list_str}")
+        await interaction.response.send_message(
+            f"目前登入中，點數剩餘：{point.RemainPoint}\n{account_list_str}"
+        )
         await interaction.channel.send("----")  # noqa: E501
         # Check if auto logout is set
         if login.auto_logout_sec > 0:
@@ -90,7 +96,9 @@ class BeanfunCog(commands.Cog):
         # Check if there is a login for the channel the command was called from
         # If not, create a new one
         if interaction.channel_id not in self.login_dict:
-            self.login_dict[interaction.channel_id] = BeanfunLogin(channel_id=interaction.channel_id)
+            self.login_dict[interaction.channel_id] = BeanfunLogin(
+                channel_id=interaction.channel_id
+            )
         # Retrieve the login associated with the channel ID
         login = self.login_dict[interaction.channel_id]
         # If the login is already logged in, inform the user that the current login status will be overwritten
@@ -104,7 +112,8 @@ class BeanfunCog(commands.Cog):
         delete_message_list = []
 
         m1 = await interaction.channel.send(
-            f"**注意！ 請使用信任的機器人，或由自己架設的機器人，避免安全風險**\n請於{LOGIN_TIME_OUT}s內完成登入", delete_after=LOGIN_TIME_OUT
+            f"**注意！ 請使用信任的機器人，或由自己架設的機器人，避免安全風險**\n請於{LOGIN_TIME_OUT}s內完成登入",
+            delete_after=LOGIN_TIME_OUT,
         )
         delete_message_list.append(m1)
         qr = qrcode.make(
@@ -115,7 +124,8 @@ class BeanfunCog(commands.Cog):
         qr.save(file)
         file.seek(0)
         m2 = await interaction.channel.send(
-            file=discord.File(fp=file, filename="image.png"), delete_after=LOGIN_TIME_OUT
+            file=discord.File(fp=file, filename="image.png"),
+            delete_after=LOGIN_TIME_OUT,
         )
         delete_message_list.append(m2)
 
@@ -145,8 +155,12 @@ class BeanfunCog(commands.Cog):
 
                 account_list_str = ""
                 for i in await login.get_maplestory_account_list():
-                    account_list_str += f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
-                await interaction.channel.send(f"目前登入中，點數剩餘：{point.RemainPoint}\n{account_list_str}")
+                    account_list_str += (
+                        f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
+                    )
+                await interaction.channel.send(
+                    f"目前登入中，點數剩餘：{point.RemainPoint}\n{account_list_str}"
+                )
                 # login success
                 pass
             elif status == -1:
@@ -156,7 +170,9 @@ class BeanfunCog(commands.Cog):
                 await interaction.channel.send("晚了就不要了:(")
                 await asyncio.gather(*[i.delete() for i in delete_message_list])
 
-        self.loop_list.append(loop.create_task(login.waiting_login_loop(login_callback)))
+        self.loop_list.append(
+            loop.create_task(login.waiting_login_loop(login_callback))
+        )
 
     # This is a function to auto-complete game account names when the "game" command is used
     async def game_account_autocomplete(
@@ -211,10 +227,15 @@ class BeanfunCog(commands.Cog):
         if account_model is None:
             await interaction.response.send_message("! 沒找到這個帳號")
             return
-
-        await interaction.channel.send(f"<@{interaction.user.id}>\n{interaction.user.name}:{interaction.user.nick} 現在領取了帳號: {account_model.account_name}")
-
         await interaction.response.send_message(
+            "發送帳號中",  # noqa: E501
+            delete_after=OTP_DISPLAY_TIME,
+        )
+        await interaction.channel.send(
+            f"<@{interaction.user.id}>\n{interaction.user.name}:{interaction.user.nick} 現在領取了帳號: {account_model.account_name}"  # noqa: E501
+        )
+
+        await interaction.channel.send(
             f"於{OTP_DISPLAY_TIME}s後刪除\n帳號名稱: {account_model.account_name}\n帳號: {hidden_message(account_model.account)}\n密碼: {hidden_message(await login.get_account_otp(account=account_model))}",  # noqa: E501
             delete_after=OTP_DISPLAY_TIME,
         )
@@ -265,4 +286,6 @@ class BeanfunCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(BeanfunCog(bot), guilds=[discord.Object(id=i) for i in LIMIT_GUILD])
+    await bot.add_cog(
+        BeanfunCog(bot), guilds=[discord.Object(id=i) for i in LIMIT_GUILD]
+    )
