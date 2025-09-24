@@ -117,7 +117,7 @@ class BeanfunCog(commands.Cog):
         )
         delete_message_list.append(m1)
         qr = qrcode.make(
-            data=f"https://beanfunstor.blob.core.windows.net/redirect/appCheck.html?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}"  # noqa: E501
+            data=f"https://play.games.gamania.com/deeplink?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}"  # noqa: E501
         )
 
         file = io.BytesIO()
@@ -130,7 +130,7 @@ class BeanfunCog(commands.Cog):
         delete_message_list.append(m2)
 
         m3 = await interaction.channel.send(
-            f"https://beanfunstor.blob.core.windows.net/redirect/appCheck.html?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}",  # noqa: E501
+            f"https://play.games.gamania.com/deeplink?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}",  # noqa: E501
             delete_after=LOGIN_TIME_OUT,
             suppress_embeds=True,
         )
