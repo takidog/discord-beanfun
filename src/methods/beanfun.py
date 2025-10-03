@@ -10,7 +10,13 @@ from lxml import etree
 
 from exceptions.beanfun_error import LoginTimeOutError
 from utils.config import LOGIN_TIME_OUT
-from utils.model import CheckLoginStatus, GamePointResponse, HeartBeatResponse, LoginQRInfo, MSAccountModel
+from utils.model import (
+    CheckLoginStatus,
+    GamePointResponse,
+    HeartBeatResponse,
+    LoginQRInfo,
+    MSAccountModel,
+)
 from utils.util import SSL_CTX, decrypt_des_pkcs5_hex, extract_json
 
 
@@ -55,7 +61,9 @@ class BeanfunLogin:
             "https://tw.beanfun.com/beanfun_block/bflogin/default.aspx?service_code=999999&service_region=T0",
         )
 
-        self.skey = res.request_info.url.query.get("skey")  # Extracting security key from the URL
+        self.skey = res.request_info.url.query.get(
+            "skey"
+        )  # Extracting security key from the URL
         # Fetching QR data using the security key
         res = await self.session.get(
             f"https://tw.newlogin.beanfun.com/generic_handlers/get_qrcodeData.ashx?skey={self.skey}&startGame=&clientID=",  # noqa: E501,
@@ -98,7 +106,7 @@ class BeanfunLogin:
             # Successful login, now fetching additional details...
             # ... code for that not annotated one by one here for brevity :P
             res = await self.session.get(
-                f"https://tw.newlogin.beanfun.com/login/qr_step2.aspx?skey={self.skey}",
+                f"https://tw.newlogin.beanfun.com/login/qr_step2.aspx?skey={self.skey}&clientID=",
             )
             final_url = re.search(r'RedirectPage\("","./(.*?)"\)', await res.text())
             if final_url:
@@ -108,16 +116,17 @@ class BeanfunLogin:
             )
             akey = final_res.request_info.url.query.get("akey")
 
-            final_html = await final_res.text()
+            # 2025-10-04 Remoe this flow
+            # final_html = await final_res.text()
             # bfSecretCode_match = re.search(
             #     r'bfSecretCode = "(.*?)"', final_html)
-            strWriteUrl_match = re.search(r'strWriteUrl = "(.*?)"', final_html)
+            # strWriteUrl_match = re.search(r'strWriteUrl = "(.*?)"', final_html)
 
-            if strWriteUrl_match:
-                strWriteUrl = strWriteUrl_match.group(1)
-                res = await self.session.get(
-                    strWriteUrl,
-                )
+            # if strWriteUrl_match:
+            #     strWriteUrl = strWriteUrl_match.group(1)
+            #     res = await self.session.get(
+            #         strWriteUrl,
+            #     )
 
             # if bfSecretCode_match:
             #     bfSecretCode = bfSecretCode_match.group(1)
@@ -131,7 +140,11 @@ class BeanfunLogin:
                     "ServiceAccountSN": "0",
                 },
             )
-            self.web_token = self.session.cookie_jar.filter_cookies("https://tw.beanfun.com").get("bfWebToken").value
+            self.web_token = (
+                self.session.cookie_jar.filter_cookies("https://tw.beanfun.com")
+                .get("bfWebToken")
+                .value
+            )
 
         return response
 
@@ -140,13 +153,16 @@ class BeanfunLogin:
         Logs out from the current session and resets the session variables.
         """
         # Removing login session via GET request
-        await self.session.get("https://tw.newlogin.beanfun.com/generic_handlers/remove_bflogin_session.ashx")
+        await self.session.get(
+            "https://tw.newlogin.beanfun.com/generic_handlers/remove_bflogin_session.ashx"
+        )
         # Logging out from the service via GET request
         await self.session.get("https://tw.beanfun.com/logout.aspx?service=999999_T0")
 
         # Erasing web token via POST request
         await self.session.post(
-            "https://tw.newlogin.beanfun.com/generic_handlers/erase_token.ashx", data={"web_token": "1"}
+            "https://tw.newlogin.beanfun.com/generic_handlers/erase_token.ashx",
+            data={"web_token": "1"},
         )  # noqa: E501
 
         # Resetting the session variables
@@ -171,13 +187,18 @@ class BeanfunLogin:
 
         """
         # If the session is set to auto-logout and the session has lasted longer than the auto-logout interval, logout.
-        if self.auto_logout_sec > 0 and time.time() - self.login_at > self.auto_logout_sec:
+        if (
+            self.auto_logout_sec > 0
+            and time.time() - self.login_at > self.auto_logout_sec
+        ):
             await self.logout()
             # Return a default heartbeat response when a logout occurs.
             return HeartBeatResponse(ResultCode=0, ResultDesc="", MainAccountID="")
 
         # Send a POST request to check login status
-        res = await self.session.get("https://tw.beanfun.com/beanfun_block/generic_handlers/echo_token.ashx?webtoken=1")
+        res = await self.session.get(
+            "https://tw.beanfun.com/beanfun_block/generic_handlers/echo_token.ashx?webtoken=1"
+        )
         # Parse the response text and return a HeartBeatResponse object.
         result = await res.text()
 
@@ -325,10 +346,14 @@ class BeanfunLogin:
         data_str = match.group(1) if match else None
 
         # Extracting the date string from the data string
-        date_string = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", data_str).group(0)
+        date_string = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", data_str).group(
+            0
+        )
 
         # Replacing the original date in the data string with a placeholder
-        data_str = re.sub(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", "TEMP_DATE_STRING", data_str)
+        data_str = re.sub(
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", "TEMP_DATE_STRING", data_str
+        )
 
         # Converting the data string from JavaScript object format to JSON format
         data_str = re.sub(r"(\w+):", r'"\1":', data_str)
@@ -342,7 +367,10 @@ class BeanfunLogin:
         data_json["ServiceAccountCreateTime"] = date_string
 
         # Extracting the polling key from the HTML
-        match = re.search(r'"generic_handlers/get_result\.ashx\?meth=GetResultByLongPolling&key=([a-z0-9-]+)"', html)
+        match = re.search(
+            r'"generic_handlers/get_result\.ashx\?meth=GetResultByLongPolling&key=([a-z0-9-]+)"',
+            html,
+        )
         polling_key = match.group(1) if match else None
 
         # Sending POST request to record service start
@@ -359,7 +387,9 @@ class BeanfunLogin:
         )
 
         # Getting cookies from server
-        res = await self.session.get("https://tw.newlogin.beanfun.com/generic_handlers/get_cookies.ashx")  # noqa: E501
+        res = await self.session.get(
+            "https://tw.newlogin.beanfun.com/generic_handlers/get_cookies.ashx"
+        )  # noqa: E501
         match = re.search(r"var m_strSecretCode = '(.+?)';", await res.text())
         secret_code = match.group(1)
 
@@ -378,7 +408,8 @@ class BeanfunLogin:
 
         # Sending GET request to get OTP
         res = await self.session.get(
-            "https://tw.beanfun.com/beanfun_block/generic_handlers/get_webstart_otp.ashx", params=params
+            "https://tw.beanfun.com/beanfun_block/generic_handlers/get_webstart_otp.ashx",
+            params=params,
         )  # noqa: E501
         data = await res.text()
 
