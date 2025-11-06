@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class LoginQRInfo(BaseModel):
     strEncryptData: str
+    strEncryptBCDOData: str
 
 
 class CheckLoginStatus(BaseModel):
