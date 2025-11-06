@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 from methods.beanfun import BeanfunLogin
 
-from utils.config import LIMIT_GUILD, LOGIN_TIME_OUT, OTP_DISPLAY_TIME
+from utils.config import LIMIT_GUILD, LOGIN_TIME_OUT, OTP_DISPLAY_TIME, REDIRECT_URL
 import qrcode
 
 
@@ -20,9 +20,9 @@ class BeanfunCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.loop_list = []  # A list to keep track of all loops
-        self.login_dict: Dict[
-            str, BeanfunLogin
-        ] = {}  # A dictionary to keep track of all logins
+        self.login_dict: Dict[str, BeanfunLogin] = (
+            {}
+        )  # A dictionary to keep track of all logins
 
     # This method is called when the cog is loaded
     async def cog_load(self) -> Coroutine[Any, Any, None]:
@@ -129,12 +129,14 @@ class BeanfunCog(commands.Cog):
         )
         delete_message_list.append(m2)
 
-        m3 = await interaction.channel.send(
-            f"https://play.games.gamania.com/deeplink?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}",  # noqa: E501
-            delete_after=LOGIN_TIME_OUT,
-            suppress_embeds=True,
-        )
-        delete_message_list.append(m3)
+        if REDIRECT_URL:
+            # f"https://play.games.gamania.com/deeplink?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}",  # noqa: E501
+            m3 = await interaction.channel.send(
+                f"{REDIRECT_URL}beanfunweblogin://qrcode.login?key={login_detail.strEncryptBCDOData}",  # noqa: E501
+                delete_after=LOGIN_TIME_OUT,
+                suppress_embeds=True,
+            )
+            delete_message_list.append(m3)
 
         loop = asyncio.get_event_loop()
 
@@ -155,9 +157,7 @@ class BeanfunCog(commands.Cog):
 
                 account_list_str = ""
                 for i in await login.get_maplestory_account_list():
-                    account_list_str += (
-                        f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
-                    )
+                    account_list_str += f"帳號名稱: {i.account_name} 帳號: {hidden_message(i.account)}\n"
                 await interaction.channel.send(
                     f"目前登入中，點數剩餘：{point.RemainPoint}\n{account_list_str}"
                 )
@@ -258,7 +258,9 @@ class BeanfunCog(commands.Cog):
         if login.is_login:
             self.login_at = time.time()
 
-        await interaction.response.send_message(f"已設定為 {login.auto_logout_sec}s後登出")
+        await interaction.response.send_message(
+            f"已設定為 {login.auto_logout_sec}s後登出"
+        )
 
     # This is a command to logout from the account
     @app_commands.command(name="logout", description="登出Beanfun")
