@@ -2,12 +2,17 @@ from pydantic import BaseModel
 
 
 class LoginQRInfo(BaseModel):
-    strEncryptData: str
-    strEncryptBCDOData: str
+    QRImage: str
+    DeepLink: str
+    IsHK: bool = False
+    IsRecaptcha: bool = False
+    RecaptchaV2PublicKey: str = ""
+    IsOTP: bool = False
 
 
 class CheckLoginStatus(BaseModel):
     Result: int
+    ResultCode: int
     ResultMessage: str
 
 
