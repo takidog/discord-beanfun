@@ -46,33 +46,51 @@ class BeanfunLogin:
 
     async def get_login_info(self) -> LoginQRInfo:
         """
-        Retrieves the login info, including encrypted QR data.
+        Retrieves the login info, including QR image and DeepLink.
 
         Returns:
-            LoginQRInfo: Contains encrypted QR data.
+            LoginQRInfo: Contains QR image (base64) and DeepLink.
         """
 
-        # Resetting the login-related variables
         await self.logout()
 
         self._create_login_time = time.time()
-        # Sending GET request to the login URL
+
         res = await self.session.get(
-            "https://tw.beanfun.com/beanfun_block/bflogin/default.aspx?service_code=999999&service_region=T0",
+            # WTF m.beanfun.com can, but tw.beanfun.com can't use.
+            # "https://tw.beanfun.com/beanfun_block/bflogin/default.aspx?service_code=999999&service_region=T0",
+            "https://m.beanfun.com/bflogin/Index?service=999999_T0&url=https%3A//m.beanfun.com/",
+        )
+        self.skey = res.request_info.url.query.get("skey")
+
+        res = await self.session.get(
+            f"https://tw.newlogin.beanfun.com/checkin.aspx?skey={self.skey}&display_mode=5"
         )
 
-        self.skey = res.request_info.url.query.get(
-            "skey"
-        )  # Extracting security key from the URL
-        # Fetching QR data using the security key
         res = await self.session.get(
-            f"https://tw.newlogin.beanfun.com/generic_handlers/get_qrcodeData.ashx?skey={self.skey}&startGame=&clientID=",  # noqa: E501,
+            f"https://login.beanfun.com/Login/Index?pSKey={self.skey}",
+            headers={"Referer": "https://tw.newlogin.beanfun.com/"},
         )
+        html = await res.text()
+        match = re.search(
+            r'name="__RequestVerificationToken"[^>]*value="([^"]*)"', html
+        )
+        if not match:
+            raise ValueError("Failed to get RequestVerificationToken")
+        self._verification_token = match.group(1)
 
+        res = await self.session.get(
+            "https://login.beanfun.com/Login/InitLogin",
+            headers={
+                "Accept": "application/json, text/plain, */*",
+                "RequestVerificationToken": self._verification_token,
+                "Referer": f"https://login.beanfun.com/Login/Index?pSKey={self.skey}",
+            },
+        )
         result = await res.json()
+        result_data = result.get("ResultData", {})
 
-        # Updating QR data for the login session
-        self.login_qr_data = LoginQRInfo(**result)
+        self.login_qr_data = LoginQRInfo(**result_data)
         return self.login_qr_data
 
     async def get_login_status(self) -> CheckLoginStatus:
@@ -93,53 +111,54 @@ class BeanfunLogin:
         if self.login_qr_data is None:
             raise ValueError("Required get login QR.")
 
-        # Sending a POST request to check login status
-        res = await self.session.post(
-            "https://tw.newlogin.beanfun.com/generic_handlers/CheckLoginStatus.ashx",
-            data={
-                "status": self.login_qr_data.strEncryptData,
-            },
+        _login_index_headers = {
+            "Accept": "application/json, text/plain, */*",
+            "RequestVerificationToken": self._verification_token,
+            "Referer": f"https://login.beanfun.com/Login/Index?pSKey={self.skey}",
+        }
+
+        res = await self.session.get(
+            "https://login.beanfun.com/QRLogin/CheckLoginStatus",
+            headers=_login_index_headers,
         )
-        # Parsing the JSON response to a CheckLoginStatus object
         response = CheckLoginStatus(**(await res.json()))
-        if response.Result == 1:
-            # Successful login, now fetching additional details...
-            # ... code for that not annotated one by one here for brevity :P
+        if response.ResultCode == 1:
+            # QRLogin → 取得 bfSecretCode cookie
+            await self.session.get(
+                "https://login.beanfun.com/QRLogin/QRLogin",
+                headers=_login_index_headers,
+            )
+
+            # SendLogin → 解析 AuthKey / SessionKey
             res = await self.session.get(
-                f"https://tw.newlogin.beanfun.com/login/qr_step2.aspx?skey={self.skey}&clientID=",
+                "https://login.beanfun.com/Login/SendLogin",
+                headers={
+                    "Referer": f"https://login.beanfun.com/Login/Index?pSKey={self.skey}",
+                },
             )
-            final_url = re.search(r'RedirectPage\("","./(.*?)"\)', await res.text())
-            if final_url:
-                final_url = final_url.group(1)
-            final_res = await self.session.get(
-                f"https://tw.newlogin.beanfun.com/login/{final_url}",
+
+            send_login_html = await res.text()
+            auth_key_match = re.search(
+                r'name="AuthKey"\s+value="([^"]*)"', send_login_html
             )
-            akey = final_res.request_info.url.query.get("akey")
+            session_key_match = re.search(
+                r'name="SessionKey"\s+value="([^"]*)"', send_login_html
+            )
+            auth_key = auth_key_match.group(1) if auth_key_match else ""
+            session_key = session_key_match.group(1) if session_key_match else self.skey
 
-            # 2025-10-04 Remoe this flow
-            # final_html = await final_res.text()
-            # bfSecretCode_match = re.search(
-            #     r'bfSecretCode = "(.*?)"', final_html)
-            # strWriteUrl_match = re.search(r'strWriteUrl = "(.*?)"', final_html)
-
-            # if strWriteUrl_match:
-            #     strWriteUrl = strWriteUrl_match.group(1)
-            #     res = await self.session.get(
-            #         strWriteUrl,
-            #     )
-
-            # if bfSecretCode_match:
-            #     bfSecretCode = bfSecretCode_match.group(1)
+            # POST return.aspx
             res = await self.session.post(
                 "https://tw.beanfun.com/beanfun_block/bflogin/return.aspx",
                 data={
-                    "SessionKey": self.skey,
-                    "AuthKey": akey,
+                    "AuthKey": auth_key,
+                    "SessionKey": session_key,
                     "ServiceCode": "",
                     "ServiceRegion": "",
                     "ServiceAccountSN": "0",
                 },
             )
+
             self.web_token = (
                 self.session.cookie_jar.filter_cookies("https://tw.beanfun.com")
                 .get("bfWebToken")
@@ -267,7 +286,7 @@ class BeanfunLogin:
         for _ in range(120):
             login_status = await self.get_login_status()
             try:
-                if login_status.Result == 1:
+                if login_status.ResultCode == 1:
                     self.is_login = True
                     self.login_at = time.time()
                     await callback_func(1)

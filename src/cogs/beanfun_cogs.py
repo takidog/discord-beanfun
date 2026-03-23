@@ -1,19 +1,19 @@
 import asyncio
+import base64
 import datetime
 import time
 from typing import Any, Coroutine, Dict, List
+from urllib.parse import quote
+
 import discord
 from discord import app_commands
 from discord.ext import commands
+
 from methods.beanfun import BeanfunLogin
-
 from utils.config import LIMIT_GUILD, LOGIN_TIME_OUT, OTP_DISPLAY_TIME, REDIRECT_URL
-import qrcode
-
+from utils.util import hidden_message
 
 import io
-
-from utils.util import hidden_message
 
 
 class BeanfunCog(commands.Cog):
@@ -116,12 +116,8 @@ class BeanfunCog(commands.Cog):
             delete_after=LOGIN_TIME_OUT,
         )
         delete_message_list.append(m1)
-        qr = qrcode.make(
-            data=f"https://play.games.gamania.com/deeplink?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}"  # noqa: E501
-        )
-
-        file = io.BytesIO()
-        qr.save(file)
+        qr_bytes = base64.b64decode(login_detail.QRImage)
+        file = io.BytesIO(qr_bytes)
         file.seek(0)
         m2 = await interaction.channel.send(
             file=discord.File(fp=file, filename="image.png"),
@@ -130,9 +126,9 @@ class BeanfunCog(commands.Cog):
         delete_message_list.append(m2)
 
         if REDIRECT_URL:
-            # f"https://play.games.gamania.com/deeplink?url=beanfunapp://Q/gameLogin/gtw/{login_detail.strEncryptData}",  # noqa: E501
+            deep_link_encoded = quote(quote(login_detail.DeepLink, safe=""), safe="")
             m3 = await interaction.channel.send(
-                f"{REDIRECT_URL}beanfunweblogin://qrcode.login?key={login_detail.strEncryptBCDOData}",  # noqa: E501
+                f"{REDIRECT_URL}{deep_link_encoded}",
                 delete_after=LOGIN_TIME_OUT,
                 suppress_embeds=True,
             )
