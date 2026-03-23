@@ -1,0 +1,23 @@
+[project]
+name = "discord-beanfun"
+version = "0.1.0"
+description = "Beanfun Discord bot"
+requires-python = ">=3.10"
+dependencies = [
+    "discord.py==2.3.1",
+    "aiohttp==3.8.4",
+    "lxml==4.9.3",
+    "pycryptodome==3.18.0",
+    "pydantic==2.0.2",
+    "qrcode==7.4.2",
+    "requests==2.31.0",
+]
+
+[dependency-groups]
+dev = [
+    "black==23.3.0",
+    "flake8==6.0.0",
+]
+
+[tool.uv]
+package = false
