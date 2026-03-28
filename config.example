@@ -1,0 +1,12 @@
+# Copy this file to `config` for local development.
+# Local `config` values take precedence over environment variables.
+
+LIMIT_GUILD=112000000003500066
+BOT_TOKEN=your_discord_bot_token
+LOGIN_TIME_OUT=180
+OTP_DISPLAY_TIME=20
+HIDDEN_PRIVATE_MESSAGE=1
+REDIRECT_URL=
+FEAT_APP_SERVER=0
+API_PORT=8080
+DB_PATH=./data/tokens.db

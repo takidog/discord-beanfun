@@ -2,7 +2,7 @@ import asyncio
 import base64
 import datetime
 import time
-from typing import Any, Coroutine, Dict, List
+from typing import Any, Coroutine, List
 from urllib.parse import quote
 
 import discord
@@ -19,10 +19,7 @@ import io
 class BeanfunCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.loop_list = []  # A list to keep track of all loops
-        self.login_dict: Dict[str, BeanfunLogin] = (
-            {}
-        )  # A dictionary to keep track of all logins
+        self.loop_list = []
 
     # This method is called when the cog is loaded
     async def cog_load(self) -> Coroutine[Any, Any, None]:
@@ -34,7 +31,7 @@ class BeanfunCog(commands.Cog):
         for i in self.loop_list:
             i.cancel()
         # Log out and close all connections in the login_dict
-        for i in self.login_dict.values():
+        for i in self.bot.login_dict.values():
             await i.logout()
             await i.close_connection()
 
@@ -51,11 +48,11 @@ class BeanfunCog(commands.Cog):
     @app_commands.command(name="status", description="取得目前登入的帳號資訊")
     async def account(self, interaction: discord.Interaction):
         # Check if there is a login for the channel the command was called from
-        if interaction.channel_id not in self.login_dict:
+        if interaction.channel_id not in self.bot.login_dict:
             await interaction.response.send_message("目前該頻道沒有登入器")
             return
 
-        login = self.login_dict[interaction.channel_id]
+        login = self.bot.login_dict[interaction.channel_id]
         # Check if the login is currently logged in
         if not login.is_login:
             await interaction.response.send_message("目前該頻道尚未登入BF")
@@ -95,12 +92,12 @@ class BeanfunCog(commands.Cog):
         await interaction.response.send_message("ok")
         # Check if there is a login for the channel the command was called from
         # If not, create a new one
-        if interaction.channel_id not in self.login_dict:
-            self.login_dict[interaction.channel_id] = BeanfunLogin(
+        if interaction.channel_id not in self.bot.login_dict:
+            self.bot.login_dict[interaction.channel_id] = BeanfunLogin(
                 channel_id=interaction.channel_id
             )
         # Retrieve the login associated with the channel ID
-        login = self.login_dict[interaction.channel_id]
+        login = self.bot.login_dict[interaction.channel_id]
         # If the login is already logged in, inform the user that the current login status will be overwritten
         if login.is_login:
             await interaction.channel.send("目前該頻道已登入，會覆蓋登入狀態。")
@@ -145,7 +142,7 @@ class BeanfunCog(commands.Cog):
                 await interaction.channel.send("登入成功")
                 await asyncio.gather(*[i.delete() for i in delete_message_list])
 
-                login = self.login_dict[interaction.channel_id]
+                login = self.bot.login_dict[interaction.channel_id]
 
                 await login.heartbeat_loop(heartbeat_callback)
 
@@ -180,11 +177,11 @@ class BeanfunCog(commands.Cog):
         # Retrieve the login associated with the channel ID
         # Then return a list of game account names
 
-        if interaction.channel_id not in self.login_dict:
+        if interaction.channel_id not in self.bot.login_dict:
             await interaction.response.send_message("目前該頻道沒有登入器")
             return
 
-        login = self.login_dict[interaction.channel_id]
+        login = self.bot.login_dict[interaction.channel_id]
         if not login.is_login:
             await interaction.response.send_message("目前該頻道尚未登入BF")
             return
@@ -202,11 +199,11 @@ class BeanfunCog(commands.Cog):
         # Retrieve the login associated with the channel ID
         # Check the login status and heartbeat, then log in to the game
 
-        if interaction.channel_id not in self.login_dict:
+        if interaction.channel_id not in self.bot.login_dict:
             await interaction.response.send_message("目前該頻道沒有登入器")
             return
 
-        login = self.login_dict[interaction.channel_id]
+        login = self.bot.login_dict[interaction.channel_id]
         if not login.is_login:
             await interaction.response.send_message("目前該頻道尚未登入BF")
             return
@@ -243,11 +240,11 @@ class BeanfunCog(commands.Cog):
         # Retrieve the login associated with the channel ID
         # Check the login status, then set the auto logout time
 
-        if interaction.channel_id not in self.login_dict:
+        if interaction.channel_id not in self.bot.login_dict:
             await interaction.response.send_message("目前該頻道沒有登入器")
             return
 
-        login = self.login_dict[interaction.channel_id]
+        login = self.bot.login_dict[interaction.channel_id]
 
         login.auto_logout_sec = ttl
 
@@ -264,11 +261,11 @@ class BeanfunCog(commands.Cog):
         # ...
         # Retrieve the login associated with the channel ID
         # Check the login status, then log out from the account
-        if interaction.channel_id not in self.login_dict:
+        if interaction.channel_id not in self.bot.login_dict:
             await interaction.response.send_message("目前該頻道沒有登入器")
             return
 
-        login = self.login_dict[interaction.channel_id]
+        login = self.bot.login_dict[interaction.channel_id]
         if not login.is_login:
             await interaction.response.send_message("目前該頻道尚未登入BF")
             return

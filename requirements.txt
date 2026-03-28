@@ -29,3 +29,4 @@ requests==2.31.0
 typing_extensions==4.7.1
 urllib3==1.25.11
 yarl==1.9.2
+aiosqlite==0.19.0
