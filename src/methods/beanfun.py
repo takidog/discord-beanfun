@@ -44,6 +44,17 @@ class BeanfunLogin:
         self._conn = aiohttp.TCPConnector(ssl=SSL_CTX)
         self.session = aiohttp.ClientSession(connector=self._conn)
 
+        self.proxy = None 
+
+        original_request = self.session._request
+
+        async def request_with_proxy(method, url, **kwargs):
+            if self.proxy and "proxy" not in kwargs:
+                kwargs["proxy"] = self.proxy
+            return await original_request(method, url, **kwargs)
+
+        self.session._request = request_with_proxy
+
     async def get_login_info(self) -> LoginQRInfo:
         """
         Retrieves the login info, including QR image and DeepLink.
@@ -117,7 +128,7 @@ class BeanfunLogin:
             "Referer": f"https://login.beanfun.com/Login/Index?pSKey={self.skey}",
         }
 
-        res = await self.session.get(
+        res = await self.session.post(
             "https://login.beanfun.com/QRLogin/CheckLoginStatus",
             headers=_login_index_headers,
         )
@@ -158,9 +169,17 @@ class BeanfunLogin:
                     "ServiceAccountSN": "0",
                 },
             )
-
+            print(
+                {
+                    "AuthKey": auth_key,
+                    "SessionKey": session_key,
+                    "ServiceCode": "",
+                    "ServiceRegion": "",
+                    "ServiceAccountSN": "0",
+                }
+            )
             self.web_token = (
-                self.session.cookie_jar.filter_cookies("https://tw.beanfun.com")
+                self.session.cookie_jar.filter_cookies("https://beanfun.com")
                 .get("bfWebToken")
                 .value
             )
