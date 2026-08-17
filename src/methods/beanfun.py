@@ -19,6 +19,42 @@ from utils.model import (
 )
 from utils.util import SSL_CTX, decrypt_des_pkcs5_hex, extract_json
 
+# Browser fingerprint sent on every request. Beanfun's risk engine flags
+# sessions whose page-fetch GETs don't look like a real browser, and a
+# flagged session gets reaped early.
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"  # noqa: E501
+DEFAULT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    # Chrome major must stay in sync with USER_AGENT, a mismatch is itself
+    # a bot signal.
+    "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Google Chrome";v="150"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
+_INPUT_TAG_RE = re.compile(r"<input[^>]+>", re.I | re.S)
+_INPUT_NAME_RE = re.compile(r"""name\s*=\s*['"]([^'"]+)['"]""", re.I)
+_INPUT_VALUE_RE = re.compile(r"""value\s*=\s*['"]([^'"]*)['"]""", re.I)
+_INPUT_SUBMIT_RE = re.compile(r"""type\s*=\s*['"]submit['"]""", re.I)
+
+
+def _extract_hidden_inputs(html: str) -> List[tuple]:
+    """
+    Scrape every non-submit <input> carrying both name and value, in
+    document order. The SendLogin page stashes opaque session tokens there
+    and return.aspx expects all of them back.
+    """
+    result = []
+    for tag in _INPUT_TAG_RE.findall(html):
+        if _INPUT_SUBMIT_RE.search(tag):
+            continue
+        name = _INPUT_NAME_RE.search(tag)
+        value = _INPUT_VALUE_RE.search(tag)
+        if name and value:
+            result.append((name.group(1), value.group(1)))
+    return result
+
 
 class BeanfunLogin:
     def __init__(self, channel_id, auto_logout_sec: int = -1) -> None:
@@ -42,7 +78,9 @@ class BeanfunLogin:
 
         # Setting up the TCP connection for the session.
         self._conn = aiohttp.TCPConnector(ssl=SSL_CTX)
-        self.session = aiohttp.ClientSession(connector=self._conn)
+        self.session = aiohttp.ClientSession(
+            connector=self._conn, headers=DEFAULT_HEADERS
+        )
 
         self.proxy = None 
 
@@ -140,43 +178,41 @@ class BeanfunLogin:
                 headers=_login_index_headers,
             )
 
-            # SendLogin → 解析 AuthKey / SessionKey
+            # SendLogin → 取回整份表單(不只 AuthKey / SessionKey)
             res = await self.session.get(
                 "https://login.beanfun.com/Login/SendLogin",
                 headers={
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",  # noqa: E501
                     "Referer": f"https://login.beanfun.com/Login/Index?pSKey={self.skey}",
                 },
             )
 
             send_login_html = await res.text()
-            auth_key_match = re.search(
-                r'name="AuthKey"\s+value="([^"]*)"', send_login_html
-            )
-            session_key_match = re.search(
-                r'name="SessionKey"\s+value="([^"]*)"', send_login_html
-            )
-            auth_key = auth_key_match.group(1) if auth_key_match else ""
-            session_key = session_key_match.group(1) if session_key_match else self.skey
+            form_data = _extract_hidden_inputs(send_login_html)
+            if not form_data:
+                raise ValueError("SendLogin returned no form data")
 
-            # POST return.aspx
-            res = await self.session.post(
+            # POST return.aspx，不跟隨 redirect。這一跳拿到的 bfWebToken 是暫時的，
+            # 只是為了推進 server 端 session 狀態。
+            await self.session.post(
+                "https://tw.beanfun.com/beanfun_block/bflogin/return.aspx",
+                data=aiohttp.FormData(form_data),
+                headers={"Referer": "https://login.beanfun.com/"},
+                allow_redirects=False,
+            )
+
+            # LoginCompleted：再 POST 一次 return.aspx。真正長效的 bfWebToken 是
+            # 這一跳之後留在 cookie jar 的值。
+            await self.session.post(
                 "https://tw.beanfun.com/beanfun_block/bflogin/return.aspx",
                 data={
-                    "AuthKey": auth_key,
-                    "SessionKey": session_key,
+                    "SessionKey": self.skey,
+                    "AuthKey": "OK",
                     "ServiceCode": "",
                     "ServiceRegion": "",
                     "ServiceAccountSN": "0",
                 },
-            )
-            print(
-                {
-                    "AuthKey": auth_key,
-                    "SessionKey": session_key,
-                    "ServiceCode": "",
-                    "ServiceRegion": "",
-                    "ServiceAccountSN": "0",
-                }
+                headers={"Referer": "https://login.beanfun.com/"},
             )
             self.web_token = (
                 self.session.cookie_jar.filter_cookies("https://beanfun.com")
@@ -240,7 +276,13 @@ class BeanfunLogin:
         # Parse the response text and return a HeartBeatResponse object.
         result = await res.text()
 
-        model = HeartBeatResponse(**extract_json(result, double_quotes=True))
+        # The request is only useful for its side effect of resetting the
+        # server's inactivity timer. A body we cannot parse means the response
+        # shape changed, not that the session died - never log out on it.
+        try:
+            model = HeartBeatResponse(**extract_json(result, double_quotes=True))
+        except Exception:
+            return HeartBeatResponse(ResultCode=1, ResultDesc="", MainAccountID="")
 
         if model.ResultCode == 0:
             await self.logout()
@@ -278,10 +320,18 @@ class BeanfunLogin:
 
         async def _worker(status_change_callback):
             while True:
-                res = await self.get_heartbeat()
-                if res.ResultCode == 0:
-                    await status_change_callback(-1)
-                    break
+                try:
+                    res = await self.get_heartbeat()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    # A transient failure must not kill the keep-alive loop,
+                    # the next tick is the retry.
+                    print(f"heartbeat failed, retrying next tick: {e}")
+                else:
+                    if res.ResultCode == 0:
+                        await status_change_callback(-1)
+                        break
 
                 await asyncio.sleep(60)
 
