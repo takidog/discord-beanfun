@@ -4,6 +4,7 @@ import re
 import time
 from datetime import datetime
 from typing import List
+from urllib.parse import unquote
 
 import aiohttp
 from lxml import etree
@@ -33,26 +34,49 @@ DEFAULT_HEADERS = {
     "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
+# Protocol constant get_webstart_otp.ashx validates. Do not change without
+# empirical verification against the live server.
+PPPPP = "1F552AEAFF976018F942B13690C990F60ED01510DDF89165F1658CCE7BC21DBA"
+
+_SKEY_RE = re.compile(r"[sp][Ss]?[Kk]ey=([^&]+)")
 _INPUT_TAG_RE = re.compile(r"<input[^>]+>", re.I | re.S)
 _INPUT_NAME_RE = re.compile(r"""name\s*=\s*['"]([^'"]+)['"]""", re.I)
 _INPUT_VALUE_RE = re.compile(r"""value\s*=\s*['"]([^'"]*)['"]""", re.I)
 _INPUT_SUBMIT_RE = re.compile(r"""type\s*=\s*['"]submit['"]""", re.I)
 
 
+def _dt_compact() -> str:
+    """Cache buster for game_zone/*.aspx: Y(M-1)DDhhmmssfff, month 0-indexed
+    and not zero-padded (the portal's JS uses Date.getMonth())."""
+    n = datetime.now()
+    return (
+        f"{n.year}{n.month - 1}{n.day:02d}{n.hour:02d}"
+        f"{n.minute:02d}{n.second:02d}{n.microsecond // 1000:03d}"
+    )
+
+
+def _dt_iso() -> str:
+    """Cache buster for get_result.ashx: yyyyMMddHHmmss.fff"""
+    n = datetime.now()
+    return n.strftime("%Y%m%d%H%M%S.") + f"{n.microsecond // 1000:03d}"
+
+
 def _extract_hidden_inputs(html: str) -> List[tuple]:
     """
-    Scrape every non-submit <input> carrying both name and value, in
-    document order. The SendLogin page stashes opaque session tokens there
-    and return.aspx expects all of them back.
+    Scrape every non-submit <input> in document order. The SendLogin page
+    stashes opaque session tokens there and return.aspx expects all of them
+    back - including ServiceCode / ServiceRegion, which the page renders
+    without a value attribute and which therefore count as empty strings.
     """
     result = []
     for tag in _INPUT_TAG_RE.findall(html):
         if _INPUT_SUBMIT_RE.search(tag):
             continue
         name = _INPUT_NAME_RE.search(tag)
+        if not name:
+            continue
         value = _INPUT_VALUE_RE.search(tag)
-        if name and value:
-            result.append((name.group(1), value.group(1)))
+        result.append((name.group(1), value.group(1) if value else ""))
     return result
 
 
@@ -105,20 +129,20 @@ class BeanfunLogin:
 
         self._create_login_time = time.time()
 
+        # The whole session is bound to whichever portal mints the skey.
+        # Going through m.beanfun.com yields a token the strict tw endpoints
+        # (get_webstart_otp) reject, so start on the tw portal.
         res = await self.session.get(
-            # WTF m.beanfun.com can, but tw.beanfun.com can't use.
-            # "https://tw.beanfun.com/beanfun_block/bflogin/default.aspx?service_code=999999&service_region=T0",
-            "https://m.beanfun.com/bflogin/Index?service=999999_T0&url=https%3A//m.beanfun.com/",
+            "https://tw.beanfun.com/beanfun_block/bflogin/default.aspx?service=999999_T0"
         )
-        self.skey = res.request_info.url.query.get("skey")
-
-        res = await self.session.get(
-            f"https://tw.newlogin.beanfun.com/checkin.aspx?skey={self.skey}&display_mode=5"
-        )
+        match = _SKEY_RE.search(str(res.url))
+        if not match:
+            raise ValueError("Failed to get skey")
+        self.skey = match.group(1)
 
         res = await self.session.get(
             f"https://login.beanfun.com/Login/Index?pSKey={self.skey}",
-            headers={"Referer": "https://tw.newlogin.beanfun.com/"},
+            headers={"Accept": "text/html"},
         )
         html = await res.text()
         match = re.search(
@@ -129,11 +153,12 @@ class BeanfunLogin:
         self._verification_token = match.group(1)
 
         res = await self.session.get(
-            "https://login.beanfun.com/Login/InitLogin",
+            f"https://login.beanfun.com/Login/InitLogin?pSKey={self.skey}",
             headers={
                 "Accept": "application/json, text/plain, */*",
-                "RequestVerificationToken": self._verification_token,
                 "Referer": f"https://login.beanfun.com/Login/Index?pSKey={self.skey}",
+                "X-Requested-With": "XMLHttpRequest",
+                "Origin": "https://login.beanfun.com",
             },
         )
         result = await res.json()
@@ -168,7 +193,13 @@ class BeanfunLogin:
 
         res = await self.session.post(
             "https://login.beanfun.com/QRLogin/CheckLoginStatus",
-            headers=_login_index_headers,
+            headers={
+                **_login_index_headers,
+                "Origin": "https://login.beanfun.com",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Length": "0",
+            },
+            data=b"",
         )
         response = CheckLoginStatus(**(await res.json()))
         if response.ResultCode == 1:
@@ -418,15 +449,14 @@ class BeanfunLogin:
         Returns:
             str: The decrypted OTP.
         """
-        d = datetime.now()
-
-        # Formatting the current datetime as a string
-        str_datetime = f"{d.year}{d.month:02d}{d.day:02d}{d.hour:02d}{d.minute:02d}{d.second:02d}{d.minute:02d}"
-
         # Sending a GET request with the formatted datetime, service details, and account serial number
-        res = await self.session.get(
-            f"https://tw.beanfun.com/beanfun_block/game_zone/game_start_step2.aspx?service_code=610074&service_region=T9&sotp={account.sn}&dt={str_datetime}"  # noqa: E501
+        step2_url = (
+            "https://tw.beanfun.com/beanfun_block/game_zone/game_start_step2.aspx"
+            f"?service_code=610074&service_region=T9&sotp={account.sn}&dt={_dt_compact()}"
         )
+        res = await self.session.get(step2_url)
+        # The generic_handlers reject requests without a same-domain referrer.
+        referer = {"Referer": step2_url}
 
         html = await res.text()
         # Using regex to extract a specific data string from the HTML
@@ -461,44 +491,64 @@ class BeanfunLogin:
         )
         polling_key = match.group(1) if match else None
 
-        # Sending POST request to record service start
-        res = await self.session.post(
-            "https://tw.beanfun.com/beanfun_block/generic_handlers/record_service_start.ashx",
-            data={  # noqa: E501
-                "service_code": "610074",
-                "service_region": "T9",
-                "service_account_id": account.account,
-                "sotp": account.sn,
-                "service_account_display_name": account.account_name,
-                "service_account_create_time": date_string,
-            },
+        # Per-request token the page appends to the record_service_start body.
+        match = re.search(
+            r'MyAccountData\.ServiceAccountCreateTime \+ "&(.*?)=(.*?)";', html
         )
+        unk_data = (match.group(1), unquote(match.group(2))) if match else None
 
         # Getting cookies from server
         res = await self.session.get(
-            "https://tw.newlogin.beanfun.com/generic_handlers/get_cookies.ashx"
+            "https://tw.newlogin.beanfun.com/generic_handlers/get_cookies.ashx",
+            headers=referer,
         )  # noqa: E501
         match = re.search(r"var m_strSecretCode = '(.+?)';", await res.text())
         secret_code = match.group(1)
 
-        # Parameters for getting OTP
-        params = {
-            "sn": polling_key,
-            "WebToken": self.web_token,
-            "SecretCode": secret_code,
-            "ppppp": "F9B45415B9321DB9635028EFDBDDB44B4012B05F95865CB8909B2C851CFE1EE11CB784F32E4347AB7001A763100D90768D8A4E30BCC3E80C",  # noqa: E501
-            "ServiceCode": "610074",
-            "ServiceRegion": "T9",
-            "ServiceAccount": account.account,
-            "CreateTime": date_string,
-            "d": int(datetime.now().timestamp() * 1000),
+        # Sending POST request to record service start
+        record_form = {  # noqa: E501
+            "service_code": "610074",
+            "service_region": "T9",
+            "service_account_id": account.account,
+            "sotp": account.sn,
+            "service_account_display_name": account.account_name,
+            "service_account_create_time": date_string,
         }
+        if unk_data:
+            record_form[unk_data[0]] = unk_data[1]
+        res = await self.session.post(
+            "https://tw.beanfun.com/beanfun_block/generic_handlers/record_service_start.ashx",
+            data=record_form,
+            headers=referer,
+        )
+
+        # Long-poll trigger that drives the server-side OTP generation.
+        await self.session.get(
+            "https://tw.beanfun.com/generic_handlers/get_result.ashx",
+            params={
+                "meth": "GetResultByLongPolling",
+                "key": polling_key,
+                "_": _dt_iso(),
+            },
+            headers=referer,
+        )
+
+        # Built as a literal string: CreateTime keeps its space as %20 and
+        # ppppp must not be re-encoded.
+        url = (
+            "https://tw.beanfun.com/beanfun_block/generic_handlers/get_webstart_otp.ashx"
+            f"?SN={polling_key}"
+            f"&WebToken={self.web_token}"
+            f"&SecretCode={secret_code}"
+            f"&ppppp={PPPPP}"
+            "&ServiceCode=610074&ServiceRegion=T9"
+            f"&ServiceAccount={account.account}"
+            f"&CreateTime={date_string.replace(' ', '%20')}"
+            f"&d={int(datetime.now().timestamp() * 1000) & 0xFFFFFFFF}"
+        )
 
         # Sending GET request to get OTP
-        res = await self.session.get(
-            "https://tw.beanfun.com/beanfun_block/generic_handlers/get_webstart_otp.ashx",
-            params=params,
-        )  # noqa: E501
+        res = await self.session.get(url, headers=referer)  # noqa: E501
         data = await res.text()
 
         # Decrypting and returning the OTP
