@@ -16,6 +16,7 @@
       * [環境變數](#環境變數)
       * [Discord Bot註冊](#discord-bot註冊)
    * [使用指令](#使用指令)
+   * [啟動器參數](#啟動器參數)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
 <!-- Added by: takidog, at: Wed Jul 12 18:17:40 CST 2023 -->
@@ -208,5 +209,23 @@ BOT PERMISSIONS 勾選 `Send Messages` `Attach Files`
 - `.sync` 同步指令，如果斜線並沒有出現提示的話。
 
 詳細的命令用法請參考源代碼。
+
+## 啟動器參數
+
+Beanfun 取得 OTP 的方式已改為 `get_webstart_otp_v2.ashx`，這支 API 會驗證呼叫端是不是官方的遊戲啟動器 (GGMWebStart)。因此 `src/methods/beanfun.py` 內寫死了幾個對應特定啟動器版本的值：
+
+| 常數 | 內容 |
+| ---- | ---- |
+| `LAUNCHER_VERSION` | 啟動器的組件版本，送出時的 `CV` 欄位 |
+| `LAUNCHER_HASH` | `GGMWebStart.dll` 的 SHA-256，送出時的 `Hash` 欄位 |
+| `_LAUNCH_TABLES` | 解開啟動參數用的四張替換表 |
+
+**Gamania 一旦更新啟動器，前兩個值就會過期**，`/game` 會開始拿不到密碼。遇到這種狀況需要重新取得新版啟動器的版本號與 DLL 雜湊並更新常數。替換表目前尚未觀察到變動。
+
+### TODO
+
+- [ ] 以 CI/CD 定期自動解析最新版啟動器，取出上述參數
+- [ ] 將解析結果發布到一個 public space（例如 GitHub Pages / Gist / Release asset）
+- [ ] bot 啟動時（或參數失效時）自動向該處取得最新參數，不需要重新發版
 
 
