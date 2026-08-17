@@ -25,16 +25,18 @@ def extract_json(s, double_quotes: bool = False):
 
 def decrypt_des_pkcs5_hex(text):
     # Split the text on ";"
+    # The OTP endpoint returns the bare payload; the older handlers prefixed it
+    # with a status segment.
     parts = text.split(";")
+    payload = parts[1] if len(parts) > 1 else parts[0]
 
-    # Check if the split parts are valid
-    if len(parts) < 2:
-        print("Decryption failed: value array is empty or length < 2")
+    if not payload:
+        print("Decryption failed: empty payload")
         raise ValueError()
 
     # Extract key and encrypted value
-    key = parts[1][:8]
-    encrypted_value = bytes.fromhex(parts[1][8:])
+    key = payload[:8]
+    encrypted_value = bytes.fromhex(payload[8:])
 
     # Create a new DES cipher object
     cipher = DES.new(key.encode(), DES.MODE_ECB)

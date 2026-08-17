@@ -7,6 +7,7 @@ from typing import List
 from urllib.parse import unquote
 
 import aiohttp
+from Crypto.Cipher import DES
 from lxml import etree
 
 from exceptions.beanfun_error import LoginTimeOutError
@@ -34,9 +35,20 @@ DEFAULT_HEADERS = {
     "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
-# Protocol constant get_webstart_otp.ashx validates. Do not change without
-# empirical verification against the live server.
-PPPPP = "1F552AEAFF976018F942B13690C990F60ED01510DDF89165F1658CCE7BC21DBA"
+# Identity of the native launcher, which get_webstart_otp_v2.ashx checks.
+# CV is its assembly version and Hash is the SHA-256 of GGMWebStart.dll, so
+# both change when Gamania ships a new launcher build.
+LAUNCHER_VERSION = "1.5.0.2"
+LAUNCHER_HASH = "dfd568a69d87abcd8f4a93d1a4481ebb57712d1d28ab0b6fc018fcf140101e06"
+
+# Substitution tables the launcher uses to normalise the launch payload; the
+# leading nibble of the payload picks one.
+_LAUNCH_TABLES = (
+    "bac987d65e432f10",
+    "3bc4d5e6f2a79108",
+    "cdbeaf9012456378",
+    "4e6fb81a3c5d7092",
+)
 
 _SKEY_RE = re.compile(r"[sp][Ss]?[Kk]ey=([^&]+)")
 _INPUT_TAG_RE = re.compile(r"<input[^>]+>", re.I | re.S)
@@ -55,10 +67,32 @@ def _dt_compact() -> str:
     )
 
 
-def _dt_iso() -> str:
-    """Cache buster for get_result.ashx: yyyyMMddHHmmss.fff"""
-    n = datetime.now()
-    return n.strftime("%Y%m%d%H%M%S.") + f"{n.microsecond // 1000:03d}"
+def _decrypt_launch_data(data: str) -> dict:
+    """
+    Decode the launch payload the game page hands to the native launcher.
+
+    The first character selects both a substitution table and where the DES
+    key sits. Every remaining character is replaced by its index in that
+    table, which turns the payload into hex; the 8 characters at the key
+    offset are the ASCII DES key and the rest is the ciphertext. The
+    plaintext is a `&&&&`-joined list of key=value pairs holding, among
+    others, the LaunchTicket.
+    """
+    n = int(data[0], 16)
+    table = _LAUNCH_TABLES[n % 4]
+    normalized = "".join(format(table.index(c), "x") for c in data[1:])
+
+    key_at = n + 1
+    key = normalized[key_at:key_at + 8].encode("ascii")
+    cipher = bytes.fromhex(normalized[:key_at] + normalized[key_at + 8:])
+    plain = DES.new(key, DES.MODE_ECB).decrypt(cipher).rstrip(b"\0").decode("utf-8")
+
+    result = {}
+    for segment in plain.split(";")[0].split("&&&&"):
+        if "=" in segment:
+            name, value = segment.split("=", 1)
+            result[name] = value
+    return result
 
 
 def _extract_hidden_inputs(html: str) -> List[tuple]:
@@ -484,26 +518,20 @@ class BeanfunLogin:
         # Replacing the placeholder date in the dictionary with the original date
         data_json["ServiceAccountCreateTime"] = date_string
 
-        # Extracting the polling key from the HTML
-        match = re.search(
-            r'"generic_handlers/get_result\.ashx\?meth=GetResultByLongPolling&key=([a-z0-9-]+)"',
-            html,
-        )
-        polling_key = match.group(1) if match else None
+        # The launch payload the page hands to the native game launcher. `data`
+        # carries the LaunchTicket the OTP endpoint wants.
+        match = re.search(r'"sn"\s*:\s*"([^"]+)"', html)
+        launch_sn = match.group(1) if match else None
+        match = re.search(r'"data"\s*:\s*"([^"]+)"', html)
+        if not match:
+            raise ValueError("game_start_step2 has no launch data")
+        launch_data = match.group(1)
 
         # Per-request token the page appends to the record_service_start body.
         match = re.search(
             r'MyAccountData\.ServiceAccountCreateTime \+ "&(.*?)=(.*?)";', html
         )
         unk_data = (match.group(1), unquote(match.group(2))) if match else None
-
-        # Getting cookies from server
-        res = await self.session.get(
-            "https://tw.newlogin.beanfun.com/generic_handlers/get_cookies.ashx",
-            headers=referer,
-        )  # noqa: E501
-        match = re.search(r"var m_strSecretCode = '(.+?)';", await res.text())
-        secret_code = match.group(1)
 
         # Sending POST request to record service start
         record_form = {  # noqa: E501
@@ -522,34 +550,29 @@ class BeanfunLogin:
             headers=referer,
         )
 
-        # Long-poll trigger that drives the server-side OTP generation.
-        await self.session.get(
-            "https://tw.beanfun.com/generic_handlers/get_result.ashx",
-            params={
-                "meth": "GetResultByLongPolling",
-                "key": polling_key,
-                "_": _dt_iso(),
-            },
-            headers=referer,
-        )
+        # The native launcher decrypts the launch payload locally and posts the
+        # LaunchTicket it finds inside. Do the same.
+        launch_params = _decrypt_launch_data(launch_data)
+        launch_ticket = launch_params.get("LaunchTicket")
+        if not launch_ticket:
+            raise ValueError("launch data carries no LaunchTicket")
 
-        # Built as a literal string: CreateTime keeps its space as %20 and
-        # ppppp must not be re-encoded.
-        url = (
-            "https://tw.beanfun.com/beanfun_block/generic_handlers/get_webstart_otp.ashx"
-            f"?SN={polling_key}"
-            f"&WebToken={self.web_token}"
-            f"&SecretCode={secret_code}"
-            f"&ppppp={PPPPP}"
-            "&ServiceCode=610074&ServiceRegion=T9"
-            f"&ServiceAccount={account.account}"
-            f"&CreateTime={date_string.replace(' ', '%20')}"
-            f"&d={int(datetime.now().timestamp() * 1000) & 0xFFFFFFFF}"
+        res = await self.session.post(
+            "https://tw.beanfun.com/beanfun_block/generic_handlers/get_webstart_otp_v2.ashx",
+            data=json.dumps(
+                {
+                    "SN": launch_sn,
+                    "LaunchTicket": launch_ticket,
+                    "CV": LAUNCHER_VERSION,
+                    "Hash": LAUNCHER_HASH,
+                    "arch": "x64",
+                }
+            ),
+            headers={**referer, "Content-Type": "application/json; charset=utf-8"},
         )
-
-        # Sending GET request to get OTP
-        res = await self.session.get(url, headers=referer)  # noqa: E501
-        data = await res.text()
+        result = await res.json(content_type=None)
+        if result.get("result") != 1:
+            raise ValueError(f"OTP request rejected: {result.get('message')}")
 
         # Decrypting and returning the OTP
-        return decrypt_des_pkcs5_hex(data)
+        return decrypt_des_pkcs5_hex(result["data"])
