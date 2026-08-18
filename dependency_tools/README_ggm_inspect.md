@@ -2,7 +2,10 @@
 
 `ggm_inspect.py` performs four operations without running the Windows installer:
 
-1. Reads the official GGM page and follows its redirect to the versioned Setup URL.
+1. Reads `generic_handlers/CheckVersion.ashx`, the JSON endpoint the launcher itself polls,
+   which reports the current version and installer URL directly. If that endpoint is
+   unavailable, falls back to reading the GGM page and following its redirect. Pass an
+   empty `--version-url` to only use the page.
 2. Compares the official version with `--current-version`.
 3. Downloads and unpacks the Setup only when the version changed, when no current version was supplied, or when `--force-download` is used.
 4. Extracts `GGMWebStart.dll` metadata, SHA-256, launcher architecture, and the hard-coded substitution tables.

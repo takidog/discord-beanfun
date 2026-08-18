@@ -35,6 +35,7 @@ import pefile
 
 
 DEFAULT_INDEX_URL = "https://tw.beanfun.com/ggm/index.aspx"
+DEFAULT_VERSION_URL = "https://tw.beanfun.com/generic_handlers/CheckVersion.ashx"
 DEFAULT_USER_AGENT = "ggm-inspect/1.0 (+interoperability version check)"
 VERSION_RE = re.compile(r"GGMSetup[_-]([0-9]+(?:\.[0-9]+)+)\.exe", re.I)
 ABSOLUTE_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.I)
@@ -89,7 +90,36 @@ def candidate_download_urls(page: str, page_url: str) -> list[str]:
     return preferred
 
 
-def resolve_download(index_url: str) -> dict[str, str]:
+def resolve_download(index_url: str, version_url: str | None = DEFAULT_VERSION_URL) -> dict[str, str]:
+    """Resolve the official installer, preferring the version endpoint."""
+    if version_url:
+        try:
+            return resolve_download_from_api(version_url)
+        except (GgmInspectError, HTTPError, URLError, TimeoutError, ValueError, KeyError) as exc:
+            print(
+                f"note: {version_url} unusable ({exc}); falling back to the index page",
+                file=sys.stderr,
+            )
+    return resolve_download_from_index(index_url)
+
+
+def resolve_download_from_api(version_url: str) -> dict[str, str]:
+    """Read the JSON the launcher itself polls: {"url": ..., "version": ...}."""
+    payload, final_url = fetch_text(version_url)
+    data = json.loads(payload)
+    download_url = data["url"]
+    filename = Path(unquote(urlparse(download_url).path)).name
+    return {
+        "index_url": final_url,
+        "link_url": download_url,
+        "download_url": download_url,
+        "version": data["version"],
+        "filename": filename,
+        "source": "CheckVersion.ashx",
+    }
+
+
+def resolve_download_from_index(index_url: str) -> dict[str, str]:
     page, final_index_url = fetch_text(index_url)
     candidates = candidate_download_urls(page, final_index_url)
     if not candidates:
@@ -114,6 +144,7 @@ def resolve_download(index_url: str) -> dict[str, str]:
                 "download_url": final_url,
                 "version": version_match.group(1),
                 "filename": Path(unquote(urlparse(final_url).path)).name,
+                "source": "index page",
             }
 
     detail = "; ".join(failures[:3])
@@ -375,6 +406,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--current-version", help="currently supported version, e.g. 1.5.0.2")
     parser.add_argument("--index-url", default=DEFAULT_INDEX_URL)
+    parser.add_argument(
+        "--version-url",
+        default=DEFAULT_VERSION_URL,
+        help="JSON version endpoint; pass an empty value to only use the index page",
+    )
     parser.add_argument("--setup", type=Path, help="analyze this local GGMSetup exe")
     parser.add_argument("--dll", type=Path, help="analyze an already extracted GGMWebStart.dll")
     parser.add_argument("--launcher-exe", type=Path, help="native GGMWebStart.exe used to determine arch")
@@ -393,7 +429,7 @@ def main() -> int:
     args = build_parser().parse_args()
     result: dict[str, Any] = {}
 
-    remote = resolve_download(args.index_url)
+    remote = resolve_download(args.index_url, args.version_url)
     result["official"] = remote
 
     current = normalize_version(args.current_version) if args.current_version else None
