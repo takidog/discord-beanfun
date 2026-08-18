@@ -47,3 +47,12 @@ FEAT_APP_SERVER = _feat_app_server_raw in ("1", "true")
 API_PORT = int(_get_config("API_PORT", 8080))
 
 DB_PATH = _get_config("DB_PATH", "./data/tokens.db")
+# Identity of the GGM launcher the OTP endpoint checks for. ggm_inspect keeps
+# these current; the pinned fallbacks live in utils.launcher_params.
+LAUNCHER_PARAMS_PATH = _get_config("LAUNCHER_PARAMS_PATH", "./data/launcher_params.json")
+
+GGM_INSPECT_PATH = _get_config("GGM_INSPECT_PATH", "../dependency_tools/ggm_inspect.py")
+
+GGM_ARTIFACT_DIR = _get_config("GGM_ARTIFACT_DIR", "./data/ggm-artifacts")
+
+LAUNCHER_CHECK_INTERVAL = int(_get_config("LAUNCHER_CHECK_INTERVAL", 3600))

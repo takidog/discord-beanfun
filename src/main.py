@@ -2,6 +2,7 @@ import os
 import asyncio
 from discord.ext import commands
 import discord
+from utils import launcher_params
 from utils.config import BOT_TOKEN, FEAT_APP_SERVER, API_PORT, DB_PATH
 
 intents = discord.Intents.all()
@@ -42,7 +43,15 @@ async def main():
     if BOT_TOKEN is None:
         raise ValueError("Not found BOT_TOKEN")
 
+    launcher_params.load()
+    try:
+        await launcher_params.refresh()
+    except Exception as e:
+        print(f"launcher params: initial check failed, keeping current values: {e}")
+
     async with bot:
+        asyncio.create_task(launcher_params.refresh_loop())
+
         if FEAT_APP_SERVER:
             from database.token_db import TokenDatabase
             from api.server import create_api_app

@@ -19,6 +19,7 @@ from utils.model import (
     LoginQRInfo,
     MSAccountModel,
 )
+from utils import launcher_params
 from utils.util import SSL_CTX, decrypt_des_pkcs5_hex, extract_json
 
 # Browser fingerprint sent on every request. Beanfun's risk engine flags
@@ -34,21 +35,6 @@ DEFAULT_HEADERS = {
     "sec-ch-ua-platform": '"Windows"',
     "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
 }
-
-# Identity of the native launcher, which get_webstart_otp_v2.ashx checks.
-# CV is its assembly version and Hash is the SHA-256 of GGMWebStart.dll, so
-# both change when Gamania ships a new launcher build.
-LAUNCHER_VERSION = "1.5.0.2"
-LAUNCHER_HASH = "dfd568a69d87abcd8f4a93d1a4481ebb57712d1d28ab0b6fc018fcf140101e06"
-
-# Substitution tables the launcher uses to normalise the launch payload; the
-# leading nibble of the payload picks one.
-_LAUNCH_TABLES = (
-    "bac987d65e432f10",
-    "3bc4d5e6f2a79108",
-    "cdbeaf9012456378",
-    "4e6fb81a3c5d7092",
-)
 
 _SKEY_RE = re.compile(r"[sp][Ss]?[Kk]ey=([^&]+)")
 _INPUT_TAG_RE = re.compile(r"<input[^>]+>", re.I | re.S)
@@ -79,7 +65,7 @@ def _decrypt_launch_data(data: str) -> dict:
     others, the LaunchTicket.
     """
     n = int(data[0], 16)
-    table = _LAUNCH_TABLES[n % 4]
+    table = launcher_params.get()["tables"][n % 4]
     normalized = "".join(format(table.index(c), "x") for c in data[1:])
 
     key_at = n + 1
@@ -557,15 +543,16 @@ class BeanfunLogin:
         if not launch_ticket:
             raise ValueError("launch data carries no LaunchTicket")
 
+        launcher = launcher_params.get()
         res = await self.session.post(
             "https://tw.beanfun.com/beanfun_block/generic_handlers/get_webstart_otp_v2.ashx",
             data=json.dumps(
                 {
                     "SN": launch_sn,
                     "LaunchTicket": launch_ticket,
-                    "CV": LAUNCHER_VERSION,
-                    "Hash": LAUNCHER_HASH,
-                    "arch": "x64",
+                    "CV": launcher["cv"],
+                    "Hash": launcher["hash"],
+                    "arch": launcher["arch"],
                 }
             ),
             headers={**referer, "Content-Type": "application/json; charset=utf-8"},

@@ -170,6 +170,9 @@ docker run -d -e BOT_TOKEN=1234454566787 -e LIMIT_GUILD=8OOOOOOOOOOOO7 --name be
 - `LOGIN_TIME_OUT`：登入超時時間（默認值為180）
 - `OTP_DISPLAY_TIME`：OTP顯示時間（默認值為20）
 - `HIDDEN_PRIVATE_MESSAGE`：是否隱藏私人訊息（默認值為1）
+- `LAUNCHER_CHECK_INTERVAL`：啟動器版本檢查間隔，單位秒（默認值為3600）
+- `LAUNCHER_PARAMS_PATH`：啟動器參數存放位置（默認值為`./data/launcher_params.json`）
+- `GGM_ARTIFACT_DIR`：安裝檔與解包結果的存放位置（默認值為`./data/ggm-artifacts`）
 
 ### Discord Bot註冊
 
@@ -212,20 +215,27 @@ BOT PERMISSIONS 勾選 `Send Messages` `Attach Files`
 
 ## 啟動器參數
 
-Beanfun 取得 OTP 的方式已改為 `get_webstart_otp_v2.ashx`，這支 API 會驗證呼叫端是不是官方的遊戲啟動器 (GGMWebStart)。因此 `src/methods/beanfun.py` 內寫死了幾個對應特定啟動器版本的值：
+Beanfun 取得 OTP 的方式已改為 `get_webstart_otp_v2.ashx`，這支 API 會驗證呼叫端是不是官方的遊戲啟動器 (GGMWebStart)。因此每次要密碼時，都必須送出對應**目前官方啟動器版本**的三組值：
 
-| 常數 | 內容 |
+| 參數 | 內容 |
 | ---- | ---- |
-| `LAUNCHER_VERSION` | 啟動器的組件版本，送出時的 `CV` 欄位 |
-| `LAUNCHER_HASH` | `GGMWebStart.dll` 的 SHA-256，送出時的 `Hash` 欄位 |
-| `_LAUNCH_TABLES` | 解開啟動參數用的四張替換表 |
+| `CV` | 啟動器的組件版本 |
+| `Hash` | `GGMWebStart.dll` 的 SHA-256 |
+| 替換表 | 解開啟動參數 (`Data`) 用的四張替換表 |
 
-**Gamania 一旦更新啟動器，前兩個值就會過期**，`/game` 會開始拿不到密碼。遇到這種狀況需要重新取得新版啟動器的版本號與 DLL 雜湊並更新常數。替換表目前尚未觀察到變動。
+**Gamania 一旦更新啟動器，這些值就會過期**，`/game` 會開始拿不到密碼。
+
+### 自動更新
+
+`dependency_tools/ggm_inspect.py` 會讀官方下載頁解析出最新版號；版號有變時才下載安裝檔，用 `innoextract` 解開（**不會執行安裝檔**），再從 `GGMWebStart.dll` 取出上述三組值。
+
+機器人啟動時檢查一次，之後每 `LAUNCHER_CHECK_INTERVAL` 秒（預設 3600）再檢查一次。版號沒變就只有一次網頁請求，不會下載任何東西。抓到新版就即時套用並寫入 `LAUNCHER_PARAMS_PATH`，重啟後直接沿用，OTP 不會中斷。
+
+檢查失敗（網路問題、解包失敗等）只會寫 log 並沿用現有的值，下一輪再試。原始碼裡仍保留一組寫死的預設值 (`src/utils/launcher_params.py` 的 `PINNED`)，在還沒有任何成功解析結果時使用。
+
+Docker image 內含從源碼編譯的 `innoextract`；已釋出的 innoextract 版本無法解析目前這包 Inno Setup 6.3 安裝檔。
 
 ### TODO
 
-- [ ] 以 CI/CD 定期自動解析最新版啟動器，取出上述參數
-- [ ] 將解析結果發布到一個 public space（例如 GitHub Pages / Gist / Release asset）
-- [ ] bot 啟動時（或參數失效時）自動向該處取得最新參數，不需要重新發版
-
-
+- [ ] 由 CI/CD 定期解析並把結果發布到 public space（GitHub Pages / Gist / Release asset）
+- [ ] 讓機器人優先向該處取得參數，省下各自下載安裝檔的頻寬與解包成本
