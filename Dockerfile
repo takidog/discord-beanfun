@@ -1,5 +1,7 @@
 # The released innoextract builds cannot parse the Inno Setup 6.3 installer the
 # GGM launcher ships as, so build a current one and copy just the binary over.
+# Static Boost.iostreams pulls in libz and libbz2, which the build requires to be
+# present as static libraries.
 FROM debian:bookworm-slim AS innoextract
 
 ARG INNOEXTRACT_REF=master
@@ -11,7 +13,9 @@ RUN apt-get update \
         cmake \
         git \
         libboost-all-dev \
+        libbz2-dev \
         liblzma-dev \
+        zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --branch "${INNOEXTRACT_REF}" \
