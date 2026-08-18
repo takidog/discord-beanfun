@@ -54,7 +54,7 @@
 
 ## 可以拿來幹嘛呢?
 
-1. 如果bot架設在NAS/Respberry/Cloud Services, 機器人保持開機的狀態
+1. 如果bot架設在NAS/Cloud Services, 機器人保持開機的狀態
 
     你可以隨時方便的登入Beanfun，並且拿到Maplestory OTP密碼
 
@@ -86,6 +86,10 @@
 
 
 ## 安裝
+
+> **僅支援 x86_64 (amd64)，不再提供 ARM image。**
+> image 內含從源碼編譯的 `innoextract`（見[啟動器參數](#啟動器參數)），ARM 版必須在模擬環境下編譯，建置時間長到不合理。
+> Raspberry Pi、ARM 版 NAS 等裝置請改用 x86_64 機器，或自行在該平台上 build。
 
 ### 取得Discord伺服器id (guild id)
 
